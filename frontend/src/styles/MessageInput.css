@@ -1,0 +1,66 @@
+.input-container {
+    display: flex;
+    align-items: center;
+    padding: 8px;
+    border-top: 1px solid #e3e3e3;
+    background: white;
+    position: relative;
+  }
+  
+  .left-buttons {
+    position: relative;
+    margin-right: 10px;
+  }
+  
+  .plus-btn {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    font-size: 22px;
+    background: #e8e8e8;
+  }
+  
+  .upload-menu {
+    position: absolute;
+    top: 40px;
+    left: 0;
+    background: white;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    z-index: 10;
+  }
+  
+  .upload-menu label {
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 5px;
+  }
+  
+  .upload-menu label:hover {
+    background: #f0f0f0;
+  }
+  
+  .message-form {
+    display: flex;
+    flex: 1;
+  }
+  
+  .message-form input {
+    flex: 1;
+    padding: 10px;
+    border-radius: 8px;
+    border: 1px solid #ccc;
+  }
+  
+  .message-form button {
+    margin-left: 8px;
+    padding: 10px 15px;
+    border-radius: 8px;
+    background: black;
+    color: white;
+  }
+  

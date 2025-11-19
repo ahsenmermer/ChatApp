@@ -1,0 +1,8 @@
+{
+  "name": "embedding",
+  "version": "1.0.0",
+  "type": "module",
+  "dependencies": {
+    "@xenova/transformers": "^1.0.0"
+  }
+}

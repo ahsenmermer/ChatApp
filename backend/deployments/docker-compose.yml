@@ -1,0 +1,294 @@
+services:
+  # ======================
+  # PostgreSQL - Auth
+  # ======================
+  auth_db:
+    image: postgres:15
+    container_name: auth_db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: 1234
+      POSTGRES_DB: auth_db
+    ports:
+      - "5435:5432"
+    volumes:
+      - auth_db_data:/var/lib/postgresql/data
+    networks:
+      - backend_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ======================
+  # PostgreSQL - Subscription
+  # ======================
+  subscription_db:
+    image: postgres:15
+    container_name: subscription_db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: 1234
+      POSTGRES_DB: subscription_db
+    ports:
+      - "5436:5432"
+    volumes:
+      - subscription_db_data:/var/lib/postgresql/data
+    networks:
+      - backend_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ======================
+  # ClickHouse (Chat Data)
+  # ======================
+  clickhouse:
+    image: clickhouse/clickhouse-server:23.8
+    container_name: clickhouse
+    environment:
+      CLICKHOUSE_USER: default
+      CLICKHOUSE_PASSWORD: ""
+      CLICKHOUSE_DB: chat_data
+    ports:
+      - "9000:9000"
+      - "8123:8123"
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+    networks:
+      - backend_network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8123 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # ======================
+  # Zookeeper
+  # ======================
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+    networks:
+      - backend_network
+    healthcheck:
+      test: ["CMD-SHELL", "echo ruok | nc 127.0.0.1 2181 | grep imok"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+      start_period: 10s
+
+  # ======================
+  # Kafka
+  # ======================
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: kafka
+    depends_on:
+      - zookeeper
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    ports:
+      - "9092:9092"
+    networks:
+      - backend_network
+    healthcheck:
+      test: ["CMD", "kafka-topics", "--bootstrap-server", "kafka:9092", "--list"]
+      interval: 15s
+      retries: 5
+      start_period: 20s
+
+
+  # ======================
+  # Auth Service
+  # ======================
+  auth_service:
+    build:
+      context: ../services/auth_service
+      dockerfile: deployments/Dockerfile
+    container_name: auth_service
+    depends_on:
+      - auth_db
+      - kafka
+    env_file:
+      - ../services/auth_service/internal/config/.env
+    ports:
+      - "8080:8080"
+    networks:
+      - backend_network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  # ======================
+  # Subscription Service
+  # ======================
+  subscription_service:
+    build:
+      context: ../services/subscription_service
+      dockerfile: deployments/Dockerfile
+    container_name: subscription_service
+    depends_on:
+      - subscription_db
+      - kafka
+    env_file:
+      - ../services/subscription_service/internal/config/.env
+    ports:
+      - "8081:8081"
+    networks:
+      - backend_network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8081/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  # ======================
+  # Chat Service
+  # ======================
+  chat_service:
+    build:
+      context: ../services/chat_service
+      dockerfile: deployments/Dockerfile
+    container_name: chat_service
+    depends_on:
+      - kafka
+      - auth_service
+      - subscription_service
+    env_file:
+      - ../services/chat_service/internal/config/.env
+    ports:
+      - "8082:8082"
+    networks:
+      - backend_network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8082/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  # ======================
+  # Chat Data Service
+  # ======================
+  chat_data_service:
+    build:
+      context: ../services/chat_data_service
+      dockerfile: deployments/Dockerfile
+    container_name: chat_data_service
+    depends_on:
+      - clickhouse
+      - kafka
+    env_file:
+      - ../services/chat_data_service/internal/config/.env
+    ports:
+      - "8083:8083"
+    networks:
+      - backend_network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8083/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+    # ======================
+  # OCR Service
+  # ======================
+  ocr_service:
+    build:
+      context: ../services/ocr_service
+      dockerfile: deployments/Dockerfile
+    container_name: ocr_service
+    ports:
+      - "8090:8090"
+    networks:
+      - backend_network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8090/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # ======================
+  # Embedding Service
+  # ======================
+  embedding_service:
+    build:
+      context: ../services/embedding_service
+      dockerfile: deployments/Dockerfile
+    container_name: embedding_service
+    ports:
+      - "8091:8400"
+    networks:
+      - backend_network
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8400/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+
+  # ======================
+  # API Gateway
+  # ======================
+  api_gateway:
+    build:
+      context: ../services/api_gateway
+      dockerfile: deployments/Dockerfile
+    container_name: api_gateway
+    depends_on:
+      - auth_service
+      - subscription_service
+      - chat_service
+      - chat_data_service
+      - ocr_service    
+      - embedding_service 
+    env_file:
+      - ../services/api_gateway/internal/config/.env
+    ports:
+      - "8085:8085"
+    networks:
+      - backend_network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8085/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+# ======================
+# Volumes
+# ======================
+volumes:
+  auth_db_data:
+  subscription_db_data:
+  clickhouse_data:
+
+# ======================
+# Network
+# ======================
+networks:
+  backend_network:
+    driver: bridge
