@@ -1,14 +1,40 @@
-import pkg from "@xenova/transformers";
-const { pipeline } = pkg;
+import { pipeline } from "@xenova/transformers";
 
-const input = process.argv[2];
+async function generateEmbedding() {
+  try {
+    // stdin'den text oku
+    const input = process.argv[2];
 
-async function run() {
-  // Doğru pipeline: "embeddings"
-  const embed = await pipeline("embeddings", "Xenova/all-MiniLM-L6-v2");
-  const output = await embed(input);
+    if (!input || input.trim() === "") {
+      console.error("Error: No input text provided");
+      process.exit(1);
+    }
 
-  console.log(JSON.stringify({ embedding: output.embedding }));
+    // Embedding pipeline oluştur
+    const extractor = await pipeline(
+      "feature-extraction",
+      "Xenova/all-MiniLM-L6-v2"
+    );
+
+    // Embedding oluştur
+    const output = await extractor(input, { pooling: "mean", normalize: true });
+
+    // Tensor'u array'e çevir
+    const embeddingArray = Array.from(output.data);
+
+    // JSON olarak yazdır
+    console.log(
+      JSON.stringify({
+        embedding: embeddingArray,
+        dimension: embeddingArray.length,
+      })
+    );
+
+    process.exit(0);
+  } catch (error) {
+    console.error("Error generating embedding:", error.message);
+    process.exit(1);
+  }
 }
 
-run();
+generateEmbedding();

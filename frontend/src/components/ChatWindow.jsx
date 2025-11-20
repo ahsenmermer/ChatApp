@@ -1,4 +1,4 @@
-import React, { useRef, useEffect } from "react";
+import React, { useRef, useEffect, useState } from "react";
 import api from "../api/api.js";
 import MessageList from "./MessageList.jsx";
 import MessageInput from "./MessageInput.jsx";
@@ -10,23 +10,29 @@ export default function ChatWindow({
   user,
 }) {
   const messagesEndRef = useRef(null);
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [text, setText] = useState("");
+
+  // Sohbet değiştiğinde input ve dosya alanlarını temizle
+  useEffect(() => {
+    setSelectedFile(null);
+    setText("");
+  }, [conversation.id]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [conversation?.messages]);
 
-  const sendMessage = async (text) => {
+  const sendMessage = async (messageText) => {
     if (!user?.id || !conversation?.id) return;
 
-    const userMsg = { id: Date.now(), from: "user", text };
-
-    // Kullanıcı mesajını anında ekle
+    const userMsg = { id: Date.now(), from: "user", text: messageText };
     onUpdateConversation(conversation.id, (prev) => [...prev, userMsg]);
 
     try {
       const res = await api.post("/api/chat/", {
         user_id: user.id,
-        message: text,
+        message: messageText,
         conversation_id: conversation.id,
       });
 
@@ -35,7 +41,6 @@ export default function ChatWindow({
         from: "AI",
         text: res.data.response || "",
       };
-
       onUpdateConversation(conversation.id, (prev) => [...prev, aiMsg]);
     } catch (err) {
       console.error("❌ Mesaj gönderilemedi:", err);
@@ -48,14 +53,13 @@ export default function ChatWindow({
     }
   };
 
-  const onFileUpload = async (file) => {
+  const onFileUpload = async (file, additionalMessage = "") => {
     if (!conversation?.id || !user?.id) return;
 
-    const userMsg = {
-      id: Date.now(),
-      from: "user",
-      text: `📎 ${file.name} dosyası gönderildi`,
-    };
+    const userText = additionalMessage
+      ? `📎 ${file.name}\n\n${additionalMessage}`
+      : `📎 ${file.name}`;
+    const userMsg = { id: Date.now(), from: "user", text: userText };
     const loadingId = Date.now() + 1;
     const loadingMsg = {
       id: loadingId,
@@ -77,10 +81,13 @@ export default function ChatWindow({
         headers: { "Content-Type": "multipart/form-data" },
       });
       const ocrText = res.data.text || "OCR metni alınamadı.";
+
       const ocrMsg = {
         id: Date.now() + 2,
         from: "AI",
-        text: `📄 OCR Sonucu:\n\n${ocrText}`,
+        text: `📄 **Dosya İşlendi**\n\n${ocrText.substring(0, 500)}${
+          ocrText.length > 500 ? "..." : ""
+        }`,
       };
 
       onUpdateConversation(conversation.id, (prev) => [
@@ -90,7 +97,9 @@ export default function ChatWindow({
 
       await api.post("/api/chat/", {
         user_id: user.id,
-        message: `[OCR] ${ocrText}`,
+        message: `[DOSYA: ${file.name}] ${
+          additionalMessage || "Dosya yüklendi"
+        }`,
         conversation_id: conversation.id,
       });
     } catch (e) {
@@ -120,9 +129,14 @@ export default function ChatWindow({
         <div ref={messagesEndRef} />
       </div>
 
-      <div className="chat-input">
-        <MessageInput onSend={sendMessage} onFileUpload={onFileUpload} />
-      </div>
+      <MessageInput
+        onSend={sendMessage}
+        onFileUpload={onFileUpload}
+        selectedFile={selectedFile}
+        setSelectedFile={setSelectedFile}
+        text={text}
+        setText={setText}
+      />
     </div>
   );
 }

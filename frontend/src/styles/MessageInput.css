@@ -1,66 +1,261 @@
+.input-wrapper {
+  position: sticky;
+  bottom: 0;
+  background: #ffffff;
+  border-top: 1px solid #e5e7eb;
+  padding: 16px 20px;
+  z-index: 10;
+}
+
+/* Dosya Önizleme */
+.file-preview {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #f3f4f6;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 12px 16px;
+  margin-bottom: 12px;
+  animation: slideDown 0.2s ease;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.file-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+}
+
+.file-icon {
+  font-size: 24px;
+}
+
+.file-name {
+  font-weight: 500;
+  color: #111827;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-size {
+  color: #6b7280;
+  font-size: 14px;
+}
+
+.remove-file-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: #fee2e2;
+  color: #dc2626;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  transition: background 0.2s;
+}
+
+.remove-file-btn:hover {
+  background: #fecaca;
+}
+
+/* Input Form */
+.message-input-form {
+  width: 100%;
+}
+
 .input-container {
-    display: flex;
-    align-items: center;
-    padding: 8px;
-    border-top: 1px solid #e3e3e3;
-    background: white;
-    position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 24px;
+  padding: 8px 8px 8px 16px;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.input-container:focus-within {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+/* Attachment Section */
+.attachment-section {
+  position: relative;
+}
+
+.attach-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: transparent;
+  border: none;
+  color: #6b7280;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s, color 0.2s;
+}
+
+.attach-btn:hover {
+  background: #e5e7eb;
+  color: #111827;
+}
+
+.attach-btn:active {
+  transform: scale(0.95);
+}
+
+/* Upload Dropdown - Yukarı Açılan */
+.upload-dropdown {
+  position: absolute;
+  bottom: 50px;
+  left: 0;
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 200px;
+  animation: slideUp 0.2s ease;
+  z-index: 100;
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
   }
-  
-  .left-buttons {
-    position: relative;
-    margin-right: 10px;
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
-  
-  .plus-btn {
-    width: 32px;
-    height: 32px;
-    border-radius: 50%;
-    font-size: 22px;
-    background: #e8e8e8;
+}
+
+.upload-option {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.upload-option:hover {
+  background: #f3f4f6;
+}
+
+.option-icon {
+  font-size: 20px;
+}
+
+.option-text {
+  font-size: 15px;
+  color: #111827;
+  font-weight: 500;
+}
+
+/* Text Input */
+.text-input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  font-size: 15px;
+  color: #111827;
+  outline: none;
+  padding: 8px 0;
+}
+
+.text-input::placeholder {
+  color: #9ca3af;
+}
+
+.text-input:disabled {
+  opacity: 0.6;
+}
+
+/* Send Button */
+.send-btn {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: #3b82f6;
+  border: none;
+  color: white;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s, transform 0.1s;
+  flex-shrink: 0;
+}
+
+.send-btn:hover:not(:disabled) {
+  background: #2563eb;
+}
+
+.send-btn:active:not(:disabled) {
+  transform: scale(0.95);
+}
+
+.send-btn:disabled {
+  background: #d1d5db;
+  cursor: not-allowed;
+}
+
+/* Spinner */
+.spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: white;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
   }
-  
-  .upload-menu {
-    position: absolute;
-    top: 40px;
-    left: 0;
-    background: white;
-    border: 1px solid #ddd;
-    border-radius: 8px;
-    padding: 10px;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    z-index: 10;
+}
+
+/* Mobile Responsive */
+@media (max-width: 768px) {
+  .input-wrapper {
+    padding: 12px 16px;
   }
-  
-  .upload-menu label {
-    cursor: pointer;
-    padding: 4px 8px;
-    border-radius: 5px;
+
+  .input-container {
+    padding: 6px 6px 6px 12px;
   }
-  
-  .upload-menu label:hover {
-    background: #f0f0f0;
+
+  .file-name {
+    max-width: 150px;
   }
-  
-  .message-form {
-    display: flex;
-    flex: 1;
+
+  .upload-dropdown {
+    min-width: 180px;
   }
-  
-  .message-form input {
-    flex: 1;
-    padding: 10px;
-    border-radius: 8px;
-    border: 1px solid #ccc;
-  }
-  
-  .message-form button {
-    margin-left: 8px;
-    padding: 10px 15px;
-    border-radius: 8px;
-    background: black;
-    color: white;
-  }
-  
+}

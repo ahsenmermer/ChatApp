@@ -14,6 +14,7 @@ func SetupRoutes(cfg config.Config) http.Handler {
 
 	// Health check
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte(`{"status":"ok","service":"api_gateway"}`))
 	})
@@ -24,8 +25,8 @@ func SetupRoutes(cfg config.Config) http.Handler {
 	mux.Handle("/api/chat/", proxy.NewChatProxy(cfg.ChatServiceURL))
 	mux.Handle("/api/chat/history/", proxy.NewChatDataProxy(cfg.ChatDataServiceURL))
 
-	// Upload endpoint
-	mux.Handle("/api/upload", UploadHandler(cfg)) // artık aynı package içinde
+	// Upload endpoint (OCR + Embedding)
+	mux.HandleFunc("/api/upload", UploadHandler(cfg))
 
 	// Fallback
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
