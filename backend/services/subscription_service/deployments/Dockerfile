@@ -17,11 +17,9 @@ FROM alpine:3.18
 
 WORKDIR /app
 
-# Optional: timezone
-RUN apk add --no-cache tzdata
+RUN apk add --no-cache tzdata ca-certificates
 ENV TZ=UTC
 
-# Copy Go binary and migrations
 COPY --from=builder /app/subscription_service .
 COPY internal/migrations ./internal/migrations
 COPY internal/config/.env ./internal/config/.env
@@ -32,4 +30,3 @@ ENV MIGRATIONS_PATH=/app/internal/migrations
 EXPOSE 8081
 
 ENTRYPOINT ["./subscription_service"]
-CMD []

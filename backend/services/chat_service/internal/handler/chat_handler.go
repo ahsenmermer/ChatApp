@@ -10,12 +10,10 @@ import (
 	"github.com/gofiber/fiber/v2"
 )
 
-// ChatHandler HTTP isteklerini ChatService'e yönlendirir
 type ChatHandler struct {
 	chatService *services.ChatService
 }
 
-// NewChatHandler: ChatHandler'ı başlatır
 func NewChatHandler(cfg *config.Config) *ChatHandler {
 	return &ChatHandler{
 		chatService: services.NewChatService(cfg),
@@ -25,25 +23,23 @@ func NewChatHandler(cfg *config.Config) *ChatHandler {
 func (h *ChatHandler) HandleChat(c *fiber.Ctx) error {
 	var req models.ChatRequest
 
-	// Body parse
 	if err := c.BodyParser(&req); err != nil {
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{
 			"error": "invalid request body",
 		})
 	}
 
-	// Basic validation
 	if req.UserID == "" || req.Message == "" {
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{
 			"error": "user_id and message are required",
 		})
 	}
 
-	// 🔥 Artık servis conversationID oluşturuyor ve geri döndürüyor
 	response, convID, err := h.chatService.HandleUserMessage(
 		req.UserID,
 		req.Message,
-		req.ConversationID, // frontend boş gönderebilir
+		req.ConversationID,
+		req.FileID, // YENİ
 	)
 
 	if err != nil {
@@ -52,9 +48,26 @@ func (h *ChatHandler) HandleChat(c *fiber.Ctx) error {
 		})
 	}
 
-	// Frontend'e AI cevabıyla birlikte conversation_id döndür
 	return c.JSON(fiber.Map{
 		"response":        response,
 		"conversation_id": convID,
 	})
+}
+
+func (h *ChatHandler) GetFileStatus(c *fiber.Ctx) error {
+	fileID := c.Params("file_id")
+	if fileID == "" {
+		return c.Status(http.StatusBadRequest).JSON(fiber.Map{
+			"error": "file_id required",
+		})
+	}
+
+	status := h.chatService.GetFileTracker().GetStatus(fileID)
+	if status == nil {
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{
+			"error": "file not found",
+		})
+	}
+
+	return c.JSON(status)
 }

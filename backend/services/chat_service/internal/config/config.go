@@ -5,17 +5,18 @@ import (
 	"os"
 )
 
-// Config: Chat service config struct
 type Config struct {
 	Port                   string
 	OpenRouterKey          string
 	KafkaBrokers           []string
 	KafkaTopicChatMessages string
+	KafkaTopicEmbedding    string // YENİ
 	AuthServiceURL         string
 	SubscriptionServiceURL string
+	QdrantURL              string // YENİ
+	XenovaURL              string // YENİ
 }
 
-// LoadConfig: Çevresel değişkenleri okuyup Config struct'ını döner
 func LoadConfig() *Config {
 	port := os.Getenv("CHAT_SERVICE_PORT")
 	if port == "" {
@@ -38,6 +39,11 @@ func LoadConfig() *Config {
 		kafkaTopic = "chat_messages"
 	}
 
+	kafkaTopicEmbedding := os.Getenv("KAFKA_TOPIC_EMBEDDING")
+	if kafkaTopicEmbedding == "" {
+		kafkaTopicEmbedding = "embedding_stored"
+	}
+
 	authURL := os.Getenv("AUTH_SERVICE_URL")
 	if authURL == "" {
 		authURL = "http://localhost:8000"
@@ -48,12 +54,25 @@ func LoadConfig() *Config {
 		subscriptionURL = "http://localhost:8081"
 	}
 
+	qdrantURL := os.Getenv("QDRANT_URL")
+	if qdrantURL == "" {
+		qdrantURL = "http://localhost:6333"
+	}
+
+	xenovaURL := os.Getenv("XENOVA_URL")
+	if xenovaURL == "" {
+		xenovaURL = "http://localhost:3000"
+	}
+
 	return &Config{
 		Port:                   port,
 		OpenRouterKey:          openRouterKey,
 		KafkaBrokers:           kafkaBrokers,
 		KafkaTopicChatMessages: kafkaTopic,
+		KafkaTopicEmbedding:    kafkaTopicEmbedding,
 		AuthServiceURL:         authURL,
 		SubscriptionServiceURL: subscriptionURL,
+		QdrantURL:              qdrantURL,
+		XenovaURL:              xenovaURL,
 	}
 }

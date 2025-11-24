@@ -24,6 +24,9 @@ CREATE TABLE IF NOT EXISTS user_subscription (
     end_date TIMESTAMP NOT NULL
 );
 
+ALTER TABLE user_subscription
+ADD COLUMN IF NOT EXISTS remaining_quota INT DEFAULT 0;
+
 -- Free plan ekle (1000 mesaj hakkı)
 INSERT INTO subscription_plans (id, name, description)
 VALUES (uuid_generate_v4(), 'Free', 'Free plan with 1000 messages quota')

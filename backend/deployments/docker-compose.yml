@@ -69,6 +69,26 @@ services:
       retries: 3
       start_period: 10s
 
+    # ======================
+  # Qdrant (Vector DB) - YENİ!
+  # ======================
+  qdrant:
+    image: qdrant/qdrant:v1.7.4
+    container_name: qdrant
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    networks:
+      - backend_network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:6333/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
   # ======================
   # Zookeeper
   # ======================
@@ -112,6 +132,25 @@ services:
       interval: 15s
       retries: 5
       start_period: 20s
+
+    # ======================
+  # Xenova Embedding Server - YENİ!
+  # ======================
+  xenova:
+    build:
+      context: ../services/embedding_service
+      dockerfile: deployments/xenova.Dockerfile
+    container_name: xenova
+    ports:
+      - "3000:3000"
+    networks:
+      - backend_network
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
 
 
   # ======================
@@ -174,6 +213,8 @@ services:
       - kafka
       - auth_service
       - subscription_service
+      - qdrant
+      - xenova
     env_file:
       - ../services/chat_service/internal/config/.env
     ports:
@@ -211,7 +252,7 @@ services:
       retries: 3
       start_period: 15s
 
-    # ======================
+ # ======================
   # OCR Service
   # ======================
   ocr_service:
@@ -219,6 +260,12 @@ services:
       context: ../services/ocr_service
       dockerfile: deployments/Dockerfile
     container_name: ocr_service
+    depends_on:
+      - kafka
+    environment:
+      OCR_SERVICE_PORT: "8090"
+      KAFKA_BROKERS: kafka:9092
+      KAFKA_GROUP: ocr-service-group
     ports:
       - "8090:8090"
     networks:
@@ -228,9 +275,9 @@ services:
       interval: 10s
       timeout: 5s
       retries: 3
-      start_period: 10s
+      start_period: 15s
 
-  # ======================
+# ======================
   # Embedding Service
   # ======================
   embedding_service:
@@ -238,8 +285,18 @@ services:
       context: ../services/embedding_service
       dockerfile: deployments/Dockerfile
     container_name: embedding_service
+    depends_on:
+      - kafka
+      - qdrant
+      - xenova
+    environment:
+      EMBEDDING_SERVICE_PORT: "8400"
+      KAFKA_BROKERS: kafka:9092
+      KAFKA_GROUP: embedding-service-group
+      QDRANT_URL: http://qdrant:6333
+      XENOVA_URL: http://xenova:3000
     ports:
-      - "8091:8400"
+      - "8400:8400"
     networks:
       - backend_network
     healthcheck:
@@ -247,7 +304,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 3
-      start_period: 10s
+      start_period: 20s
 
 
   # ======================
@@ -285,6 +342,7 @@ volumes:
   auth_db_data:
   subscription_db_data:
   clickhouse_data:
+  qdrant_data:
 
 # ======================
 # Network

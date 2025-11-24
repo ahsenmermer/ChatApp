@@ -2,6 +2,7 @@ package services
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -13,41 +14,40 @@ import (
 	"github.com/google/uuid"
 )
 
-// ChatService: Chat işlemlerini yöneten ana servis
 type ChatService struct {
 	cfg                *config.Config
 	authClient         *AuthClient
 	subscriptionClient *SubscriptionClient
 	memoryService      *MemoryService
 	kafkaProducer      *repository.KafkaProducer
+	ragService         *RAGService
+	fileTracker        *FileTracker
 }
 
-// NewChatService: Servisi başlatır
 func NewChatService(cfg *config.Config) *ChatService {
+	qdrantClient := repository.NewQdrantClient(cfg.QdrantURL)
+	xenovaClient := NewXenovaClient(cfg.XenovaURL)
+
 	return &ChatService{
 		cfg:                cfg,
 		authClient:         NewAuthClient(cfg.AuthServiceURL),
 		subscriptionClient: NewSubscriptionClient(cfg.SubscriptionServiceURL, cfg.KafkaBrokers, cfg.KafkaTopicChatMessages),
 		memoryService:      NewMemoryService(20),
 		kafkaProducer:      repository.NewKafkaProducer(cfg.KafkaBrokers, cfg.KafkaTopicChatMessages),
+		ragService:         NewRAGService(qdrantClient, xenovaClient),
+		fileTracker:        NewFileTracker(),
 	}
 }
 
-// HandleUserMessage:
-// Artık 3 değer döner: response, conversationID, error
-func (c *ChatService) HandleUserMessage(userID, message, conversationID string) (string, string, error) {
-
-	// 👉 Backend conversationID oluşturuyor
+func (c *ChatService) HandleUserMessage(userID, message, conversationID, fileID string) (string, string, error) {
 	if conversationID == "" {
 		conversationID = uuid.New().String()
 	}
 
-	// 1. Auth doğrulama
 	if !c.authClient.IsUserValid(userID) {
 		return "", conversationID, fmt.Errorf("unauthorized user")
 	}
 
-	// 2. Plan aktif mi ve kota var mı?
 	if !c.subscriptionClient.IsSubscriptionActive(userID) {
 		return "", conversationID, fmt.Errorf("subscription inactive or expired")
 	}
@@ -60,21 +60,50 @@ func (c *ChatService) HandleUserMessage(userID, message, conversationID string) 
 		return "", conversationID, fmt.Errorf("quota exhausted")
 	}
 
-	// 3. Memory'den geçmiş konuşmaları al
-	context := c.memoryService.GetContext(userID)
-	fullPrompt := fmt.Sprintf("%s\nUser: %s", context, message)
+	// RAG: Eğer fileID varsa ve dosya hazırsa, ilgili chunk'ları getir
+	var ragContext string
+	if fileID != "" {
+		if !c.fileTracker.IsReady(fileID) {
+			return "", conversationID, fmt.Errorf("file is still processing or not found")
+		}
 
-	// 4. OpenRouter API çağrısı
-	response, err := callOpenRouterAPI(fullPrompt, c.cfg.OpenRouterKey)
+		chunks, err := c.ragService.SearchRelevantChunks(context.Background(), message, fileID, 5)
+		if err != nil {
+			return "", conversationID, fmt.Errorf("failed to search document: %v", err)
+		}
+
+		if len(chunks) > 0 {
+			ragContext = c.ragService.BuildContext(chunks)
+		}
+	}
+
+	// Memory'den geçmiş konuşmaları al
+	memoryContext := c.memoryService.GetContext(userID)
+
+	// Full prompt oluştur
+	var fullPrompt string
+	if ragContext != "" {
+		fullPrompt = fmt.Sprintf("%s\n\n%s\n\nKullanıcı Sorusu: %s", ragContext, memoryContext, message)
+	} else {
+		fullPrompt = fmt.Sprintf("%s\nUser: %s", memoryContext, message)
+	}
+
+	// OpenRouter API çağrısı
+	systemPrompt := "Sen kullanıcıyla doğal bir şekilde sohbet eden bir yapay zekâsın."
+	if ragContext != "" {
+		systemPrompt = "Sen kullanıcıya belge içeriğine dayalı cevaplar veren bir yapay zekâsın. Verilen belge bölümlerini analiz edip kullanıcının sorusuna doğru ve detaylı cevap ver."
+	}
+
+	response, err := callOpenRouterAPI(fullPrompt, systemPrompt, c.cfg.OpenRouterKey)
 	if err != nil {
 		return "", conversationID, fmt.Errorf("AI response error: %v", err)
 	}
 
-	// 5. Memory'e yeni mesajları ekle
+	// Memory'e ekle
 	c.memoryService.AddMessage(userID, "User: "+message)
 	c.memoryService.AddMessage(userID, "AI: "+response)
 
-	// 6. Subscription Service'e kota azaltma bildirimi gönder
+	// Subscription event gönder
 	go func() {
 		event := map[string]string{
 			"user_id": userID,
@@ -85,28 +114,27 @@ func (c *ChatService) HandleUserMessage(userID, message, conversationID string) 
 			"application/json", bytes.NewBuffer(jsonData))
 	}()
 
-	// 7. Kafka’ya event gönder
+	// Kafka event
 	go func() {
 		if err := c.kafkaProducer.PublishChatCompleted(userID, message, response, conversationID); err != nil {
 			fmt.Printf("Kafka event publish failed: %v\n", err)
 		}
 	}()
 
-	// 🔥 Artık conversationID de dönüyor
 	return response, conversationID, nil
 }
 
-// ============================================================
-// 🧠 OpenRouter API Çağrısı
-// ============================================================
+func (c *ChatService) GetFileTracker() *FileTracker {
+	return c.fileTracker
+}
 
-func callOpenRouterAPI(prompt string, apiKey string) (string, error) {
+func callOpenRouterAPI(prompt, systemPrompt, apiKey string) (string, error) {
 	url := "https://openrouter.ai/api/v1/chat/completions"
 
 	reqBody := map[string]interface{}{
 		"model": "nvidia/nemotron-nano-9b-v2:free",
 		"messages": []map[string]string{
-			{"role": "system", "content": "Sen kullanıcıyla doğal bir şekilde sohbet eden bir yapay zekâsın."},
+			{"role": "system", "content": systemPrompt},
 			{"role": "user", "content": prompt},
 		},
 	}
@@ -116,7 +144,7 @@ func callOpenRouterAPI(prompt string, apiKey string) (string, error) {
 	req.Header.Set("Authorization", "Bearer "+apiKey)
 	req.Header.Set("Content-Type", "application/json")
 
-	client := &http.Client{Timeout: 20 * time.Second}
+	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
 		return "", err

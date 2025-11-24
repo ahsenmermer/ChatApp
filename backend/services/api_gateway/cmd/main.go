@@ -3,7 +3,6 @@ package main
 import (
 	"log"
 	"net/http"
-	"os"
 	"time"
 
 	"api_gateway/internal/config"
@@ -12,23 +11,9 @@ import (
 )
 
 func main() {
-	// load env-based config
 	cfg := config.Load()
 
-	// optional: simple logging to file if requested
-	if f := os.Getenv("GATEWAY_LOG_FILE"); f != "" {
-		logFile, err := os.OpenFile(f, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
-		if err == nil {
-			log.SetOutput(logFile)
-			defer logFile.Close()
-		} else {
-			log.Printf("⚠️ Failed to open log file %s: %v", f, err)
-		}
-	}
-
 	mux := router.SetupRoutes(cfg)
-
-	// wrap with middleware (logging + simple timing)
 	handler := middleware.RequestLogger(mux)
 
 	server := &http.Server{
@@ -39,8 +24,13 @@ func main() {
 		IdleTimeout:  120 * time.Second,
 	}
 
-	log.Printf("🚪 API Gateway starting on :%s (proxying: auth=%s, sub=%s, chat=%s, chatdata=%s)",
-		cfg.Port, cfg.AuthServiceURL, cfg.SubscriptionServiceURL, cfg.ChatServiceURL, cfg.ChatDataServiceURL)
+	log.Printf("🚪 API Gateway starting on :%s", cfg.Port)
+	log.Printf("   Auth:         %s", cfg.AuthServiceURL)
+	log.Printf("   Subscription: %s", cfg.SubscriptionServiceURL)
+	log.Printf("   Chat:         %s", cfg.ChatServiceURL)
+	log.Printf("   ChatData:     %s", cfg.ChatDataServiceURL)
+	log.Printf("   OCR:          %s", cfg.OCRServiceURL)
+	log.Printf("   Embedding:    %s", cfg.EmbeddingServiceURL)
 
 	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatalf("❌ API Gateway failed: %v", err)

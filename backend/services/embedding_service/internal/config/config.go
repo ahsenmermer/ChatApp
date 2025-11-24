@@ -3,9 +3,11 @@ package config
 import "os"
 
 type Config struct {
-	Port      string
-	QdrantURL string
-	ModelPath string
+	Port         string
+	KafkaBrokers []string
+	KafkaGroup   string
+	QdrantURL    string
+	XenovaURL    string
 }
 
 func LoadConfig() *Config {
@@ -13,20 +15,27 @@ func LoadConfig() *Config {
 	if port == "" {
 		port = "8400"
 	}
-
+	brokersEnv := os.Getenv("KAFKA_BROKERS")
+	if brokersEnv == "" {
+		brokersEnv = "localhost:9092"
+	}
+	group := os.Getenv("KAFKA_GROUP")
+	if group == "" {
+		group = "embedding-service-group"
+	}
 	qdrant := os.Getenv("QDRANT_URL")
 	if qdrant == "" {
 		qdrant = "http://localhost:6333"
 	}
-
-	model := os.Getenv("XENOVA_MODEL_PATH")
-	if model == "" {
-		model = "./internal/embedding/model"
+	xenova := os.Getenv("XENOVA_URL")
+	if xenova == "" {
+		xenova = "http://localhost:3000"
 	}
-
 	return &Config{
-		Port:      port,
-		QdrantURL: qdrant,
-		ModelPath: model,
+		Port:         port,
+		KafkaBrokers: []string{brokersEnv},
+		KafkaGroup:   group,
+		QdrantURL:    qdrant,
+		XenovaURL:    xenova,
 	}
 }

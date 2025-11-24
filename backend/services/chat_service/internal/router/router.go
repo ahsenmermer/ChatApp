@@ -13,8 +13,8 @@ func SetupRouter(cfg *config.Config) *fiber.App {
 	chatHandler := handler.NewChatHandler(cfg)
 
 	api := app.Group("/api")
-	// Kullanıcı her zaman chat yapabilir, plan kontrolü yok
 	api.Post("/chat", chatHandler.HandleChat)
+	api.Get("/file/status/:file_id", chatHandler.GetFileStatus) // YENİ
 
 	return app
 }
