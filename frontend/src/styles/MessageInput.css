@@ -1,23 +1,20 @@
-.input-wrapper {
-  position: sticky;
-  bottom: 0;
-  background: #ffffff;
-  border-top: 1px solid #e5e7eb;
-  padding: 16px 20px;
-  z-index: 10;
+.message-input-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
-/* Dosya Önizleme */
-.file-preview {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  background: #f3f4f6;
-  border: 1px solid #e5e7eb;
-  border-radius: 12px;
+/* 📎 Dosya Önizleme Badge */
+.file-preview-badge {
+  margin: 0 16px;
   padding: 12px 16px;
-  margin-bottom: 12px;
-  animation: slideDown 0.2s ease;
+  background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
+  border: 1px solid #93c5fd;
+  border-radius: 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  animation: slideDown 0.3s ease;
 }
 
 @keyframes slideDown {
@@ -42,104 +39,96 @@
   font-size: 24px;
 }
 
-.file-name {
-  font-weight: 500;
-  color: #111827;
-  max-width: 200px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.file-details {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
-.file-size {
-  color: #6b7280;
+.file-name {
   font-size: 14px;
+  font-weight: 600;
+  color: #1e40af;
+}
+
+.file-status {
+  font-size: 12px;
+  color: #3b82f6;
 }
 
 .remove-file-btn {
   width: 28px;
   height: 28px;
   border-radius: 50%;
-  background: #fee2e2;
-  color: #dc2626;
-  border: none;
+  background: #ffffff;
+  border: 1px solid #93c5fd;
+  color: #1e40af;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 16px;
-  transition: background 0.2s;
+  transition: all 0.2s;
 }
 
 .remove-file-btn:hover {
-  background: #fecaca;
-}
-
-/* Input Form */
-.message-input-form {
-  width: 100%;
+  background: #fee2e2;
+  border-color: #fca5a5;
+  color: #dc2626;
 }
 
 .input-container {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   gap: 12px;
-  background: #f9fafb;
-  border: 1px solid #e5e7eb;
-  border-radius: 24px;
-  padding: 8px 8px 8px 16px;
-  transition: border-color 0.2s, box-shadow 0.2s;
+  padding: 16px;
+  background: #ffffff;
+  border-top: 1px solid #e5e7eb;
 }
 
-.input-container:focus-within {
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
-}
-
-/* Attachment Section */
-.attachment-section {
+/* Attachment Button */
+.attachment-wrapper {
   position: relative;
 }
 
-.attach-btn {
-  width: 36px;
-  height: 36px;
+.attachment-btn {
+  width: 40px;
+  height: 40px;
   border-radius: 50%;
-  background: transparent;
+  background: #f3f4f6;
   border: none;
-  color: #6b7280;
-  cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background 0.2s, color 0.2s;
+  cursor: pointer;
+  transition: all 0.2s;
+  color: #6b7280;
 }
 
-.attach-btn:hover {
+.attachment-btn:hover:not(:disabled) {
   background: #e5e7eb;
-  color: #111827;
+  color: #374151;
+  transform: rotate(45deg);
 }
 
-.attach-btn:active {
-  transform: scale(0.95);
+.attachment-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
-/* Upload Dropdown - Yukarı Açılan */
+/* Dropdown Menu */
 .upload-dropdown {
   position: absolute;
   bottom: 50px;
   left: 0;
-  background: white;
+  background: #ffffff;
   border: 1px solid #e5e7eb;
   border-radius: 12px;
-  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
-  padding: 8px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
   min-width: 200px;
-  animation: slideUp 0.2s ease;
+  overflow: hidden;
   z-index: 100;
+  animation: slideUp 0.2s ease;
 }
 
 @keyframes slideUp {
@@ -158,42 +147,53 @@
   align-items: center;
   gap: 12px;
   padding: 12px 16px;
-  border-radius: 8px;
   cursor: pointer;
   transition: background 0.2s;
+  color: #374151;
 }
 
 .upload-option:hover {
-  background: #f3f4f6;
+  background: #f9fafb;
 }
 
-.option-icon {
-  font-size: 20px;
+.upload-option svg {
+  color: #6b7280;
 }
 
-.option-text {
-  font-size: 15px;
-  color: #111827;
+.upload-option span {
+  font-size: 14px;
   font-weight: 500;
 }
 
-/* Text Input */
-.text-input {
+/* Message Form */
+.message-form {
   flex: 1;
-  border: none;
-  background: transparent;
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+}
+
+.message-input {
+  flex: 1;
+  padding: 12px 16px;
+  border: 1px solid #e5e7eb;
+  border-radius: 24px;
   font-size: 15px;
-  color: #111827;
+  font-family: inherit;
+  resize: none;
+  max-height: 120px;
+  min-height: 44px;
   outline: none;
-  padding: 8px 0;
+  transition: border-color 0.2s;
 }
 
-.text-input::placeholder {
-  color: #9ca3af;
+.message-input:focus {
+  border-color: #2563eb;
 }
 
-.text-input:disabled {
-  opacity: 0.6;
+.message-input:disabled {
+  background: #f9fafb;
+  cursor: not-allowed;
 }
 
 /* Send Button */
@@ -201,61 +201,65 @@
   width: 40px;
   height: 40px;
   border-radius: 50%;
-  background: #3b82f6;
+  background: #2563eb;
   border: none;
-  color: white;
-  cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background 0.2s, transform 0.1s;
-  flex-shrink: 0;
+  cursor: pointer;
+  transition: all 0.2s;
+  color: #ffffff;
 }
 
 .send-btn:hover:not(:disabled) {
-  background: #2563eb;
-}
-
-.send-btn:active:not(:disabled) {
-  transform: scale(0.95);
+  background: #1d4ed8;
+  transform: scale(1.05);
 }
 
 .send-btn:disabled {
-  background: #d1d5db;
+  background: #e5e7eb;
   cursor: not-allowed;
+  color: #9ca3af;
 }
 
-/* Spinner */
-.spinner {
-  width: 16px;
-  height: 16px;
-  border: 2px solid rgba(255, 255, 255, 0.3);
-  border-top-color: white;
-  border-radius: 50%;
-  animation: spin 0.6s linear infinite;
+.loading-spinner {
+  font-size: 16px;
+  animation: spin 1s linear infinite;
 }
 
 @keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
   to {
     transform: rotate(360deg);
   }
 }
 
-/* Mobile Responsive */
+/* Responsive */
 @media (max-width: 768px) {
-  .input-wrapper {
-    padding: 12px 16px;
-  }
-
   .input-container {
-    padding: 6px 6px 6px 12px;
+    padding: 12px;
   }
 
-  .file-name {
-    max-width: 150px;
+  .message-input {
+    font-size: 16px; /* iOS zoom önleme */
   }
 
   .upload-dropdown {
     min-width: 180px;
+  }
+
+  .file-preview-badge {
+    margin: 0 12px;
+    padding: 10px 12px;
+  }
+
+  .file-name {
+    font-size: 13px;
+  }
+
+  .file-status {
+    font-size: 11px;
   }
 }

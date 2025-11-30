@@ -34,16 +34,13 @@ func main() {
 
 	chatSvc = services.NewChatService(cfg)
 
-	app := router.SetupRouter(cfg)
+	app := router.SetupRouter(chatSvc)
 
 	if err := waitForKafka(cfg.KafkaBrokers, 12); err != nil {
 		log.Fatalf("❌ %v", err)
 	}
 
-	// Chat messages consumer
 	go startChatConsumer(cfg)
-
-	// Embedding stored consumer (YENİ)
 	go startEmbeddingConsumer(cfg)
 
 	log.Printf("Starting Chat Service on port %s...", cfg.Port)
@@ -101,15 +98,19 @@ func startEmbeddingConsumer(cfg *config.Config) {
 	}
 	defer master.Close()
 
-	consumer, err := master.ConsumePartition(cfg.KafkaTopicEmbedding, 0, sarama.OffsetNewest)
+	topic := "embedding_stored"
+
+	consumer, err := master.ConsumePartition(topic, 0, sarama.OffsetOldest)
 	if err != nil {
 		log.Fatalf("failed to consume embedding partition: %v", err)
 	}
 	defer consumer.Close()
 
-	log.Printf("🎧 Embedding consumer started for topic: %s", cfg.KafkaTopicEmbedding)
+	log.Printf("🎧 Embedding consumer started for topic: %s (reading from oldest)", topic)
 
 	for msg := range consumer.Messages() {
+		log.Printf("📥 Raw Kafka message (offset=%d): %s", msg.Offset, string(msg.Value))
+
 		var evt models.EmbeddingStoredEvent
 		if err := json.Unmarshal(msg.Value, &evt); err != nil {
 			log.Printf("⚠️ Failed to unmarshal embedding event: %v", err)
@@ -117,8 +118,50 @@ func startEmbeddingConsumer(cfg *config.Config) {
 		}
 
 		if evt.Event == "EMBEDDING_STORED" {
-			log.Printf("✅ File ready: %s (%s) with %d chunks", evt.FileID, evt.FileName, evt.TotalChunks)
-			chatSvc.GetFileTracker().UpdateStatus(evt.FileID, evt.FileName, "ready", evt.TotalChunks)
+			log.Printf("📥 EMBEDDING_STORED event received: file_id=%s, chunks=%d",
+				evt.FileID, evt.TotalChunks)
+
+			// FileTracker'ı güncelle
+			chatSvc.GetFileTracker().UpdateStatus(
+				evt.FileID,
+				evt.FileName,
+				"ready",
+				evt.TotalChunks,
+			)
+
+			log.Printf("✅ File ready: %s (%s) with %d chunks",
+				evt.FileID, evt.FileName, evt.TotalChunks)
+
+			// ✅ YENİ: User bilgisi için 5 saniye bekle (retry)
+			var fileInfo *models.FileStatus
+			maxRetries := 5
+			for i := 0; i < maxRetries; i++ {
+				fileInfo = chatSvc.GetFileTracker().GetFileInfo(evt.FileID)
+				if fileInfo != nil && fileInfo.UserID != "" {
+					break // Bulundu!
+				}
+				log.Printf("⏳ Waiting for user info... (attempt %d/%d)", i+1, maxRetries)
+				time.Sleep(1 * time.Second)
+			}
+
+			if fileInfo != nil && fileInfo.UserID != "" {
+				// Kafka'ya file_attached eventi gönder
+				err := chatSvc.GetKafkaProducer().PublishFileAttached(
+					fileInfo.UserID,
+					evt.FileName,
+					evt.FileID,
+					fileInfo.ConversationID,
+				)
+				if err != nil {
+					log.Printf("⚠️ Failed to publish file_attached event: %v", err)
+				} else {
+					log.Printf("✅ File attachment message sent to chat history")
+				}
+			} else {
+				log.Printf("⚠️ No user info found for file %s after waiting, skipping chat history entry", evt.FileID)
+			}
+		} else {
+			log.Printf("⚠️ Unknown event type: '%s'", evt.Event)
 		}
 	}
 }

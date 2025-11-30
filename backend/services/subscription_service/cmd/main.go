@@ -12,6 +12,7 @@ import (
 	"subscription_service/internal/config"
 	"subscription_service/internal/database"
 	"subscription_service/internal/handler"
+	"subscription_service/internal/migrations"
 	"subscription_service/internal/repository"
 	"subscription_service/internal/router"
 	"subscription_service/internal/services"
@@ -51,8 +52,8 @@ func main() {
 	}
 	defer database.Close()
 
-	// Run migrations
-	if err := database.RunMigrations(cfg.MigrationsPath); err != nil {
+	// Run migrations (migrations.Run artık path parametresi alıyor)
+	if err := migrations.Run(cfg.MigrationsPath); err != nil {
 		log.Fatalf("❌ Failed to run migrations: %v", err)
 	}
 

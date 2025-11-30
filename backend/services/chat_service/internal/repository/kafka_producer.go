@@ -13,7 +13,6 @@ type KafkaProducer struct {
 	writer *kafka.Writer
 }
 
-// brokers artık []string alıyor
 func NewKafkaProducer(brokers []string, topic string) *KafkaProducer {
 	writer := kafka.NewWriter(kafka.WriterConfig{
 		Brokers:  brokers,
@@ -23,19 +22,16 @@ func NewKafkaProducer(brokers []string, topic string) *KafkaProducer {
 	return &KafkaProducer{writer: writer}
 }
 
-// ChatEvent → artık conversation_id ve timestamp içeriyor
 type ChatEvent struct {
-	EventType      string `json:"event_type"`      // "chat_completed"
-	UserID         string `json:"user_id"`         // kullanıcı id'si
-	Message        string `json:"message"`         // kullanıcının gönderdiği mesaj
-	Response       string `json:"response"`        // AI cevabı
-	ConversationID string `json:"conversation_id"` // conversation id
-	Timestamp      string `json:"timestamp"`       // ISO8601 / RFC3339 formatlı zaman
-	DecreaseQuota  bool   `json:"decrease_quota"`  // event-driven kota azaltma için
+	EventType      string `json:"event_type"`
+	UserID         string `json:"user_id"`
+	Message        string `json:"message"`
+	Response       string `json:"response"`
+	ConversationID string `json:"conversation_id"`
+	Timestamp      string `json:"timestamp"`
+	DecreaseQuota  bool   `json:"decrease_quota"`
 }
 
-// PublishChatCompleted: Chat tamamlandığında Kafka event üretir
-// conversationID "" ise event içinde boş gönderilir (consumer 'default' atayabilir)
 func (k *KafkaProducer) PublishChatCompleted(userID, message, response, conversationID string) error {
 	event := ChatEvent{
 		EventType:      "chat_completed",
@@ -45,6 +41,43 @@ func (k *KafkaProducer) PublishChatCompleted(userID, message, response, conversa
 		ConversationID: conversationID,
 		Timestamp:      time.Now().UTC().Format(time.RFC3339),
 		DecreaseQuota:  true,
+	}
+
+	data, err := json.Marshal(event)
+	if err != nil {
+		return err
+	}
+
+	err = k.writer.WriteMessages(context.Background(),
+		kafka.Message{
+			Value: data,
+		})
+	if err != nil {
+		fmt.Println("Kafka publish error:", err)
+	}
+	return err
+}
+
+// ✅ YENİ: PublishFileAttached - PDF yükleme mesajını kaydet
+type FileAttachedEvent struct {
+	EventType      string `json:"event_type"` // "file_attached"
+	UserID         string `json:"user_id"`
+	Message        string `json:"message"` // "📎 öneri.pdf"
+	ConversationID string `json:"conversation_id"`
+	FileID         string `json:"file_id"`
+	FileName       string `json:"file_name"`
+	Timestamp      string `json:"timestamp"`
+}
+
+func (k *KafkaProducer) PublishFileAttached(userID, fileName, fileID, conversationID string) error {
+	event := FileAttachedEvent{
+		EventType:      "file_attached",
+		UserID:         userID,
+		Message:        fmt.Sprintf("📎 %s", fileName),
+		ConversationID: conversationID,
+		FileID:         fileID,
+		FileName:       fileName,
+		Timestamp:      time.Now().UTC().Format(time.RFC3339),
 	}
 
 	data, err := json.Marshal(event)

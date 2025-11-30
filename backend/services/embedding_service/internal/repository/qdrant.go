@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"time"
 )
 
 type QdrantRepo struct {
@@ -17,22 +18,48 @@ type QdrantRepo struct {
 func NewQdrantRepo(baseURL string) *QdrantRepo {
 	return &QdrantRepo{
 		baseURL: baseURL,
-		client:  &http.Client{},
+		client: &http.Client{
+			Timeout: 30 * time.Second,
+		},
 	}
 }
 
 // UpsertVector uploads a single vector to Qdrant
 func (r *QdrantRepo) UpsertVector(collection string, id string, vector []float32, payload map[string]interface{}) (string, error) {
+	// ✅ Qdrant 1.x için doğru endpoint (/upsert YOK)
 	url := fmt.Sprintf("%s/collections/%s/points?wait=true", r.baseURL, collection)
 
-	// Qdrant expects this exact format
+	// Payload'u temizle - sadece JSON-safe değerleri tut
+	cleanedPayload := make(map[string]interface{})
+	for k, v := range payload {
+		switch val := v.(type) {
+		case string, bool, int64, float64:
+			cleanedPayload[k] = v
+		case int:
+			cleanedPayload[k] = int64(val)
+		case int32:
+			cleanedPayload[k] = int64(val)
+		case float32:
+			cleanedPayload[k] = float64(val)
+		case nil:
+			continue
+		default:
+			cleanedPayload[k] = fmt.Sprintf("%v", v)
+		}
+	}
+
+	// ✅ vector'ü float64'e çevir
+	vectorFloat64 := make([]float64, len(vector))
+	for i, v := range vector {
+		vectorFloat64[i] = float64(v)
+	}
+
+	// ✅ Batch upsert format (Qdrant 1.x için gerekli)
 	body := map[string]interface{}{
-		"points": []map[string]interface{}{
-			{
-				"id":      id, // UUID string is fine
-				"vector":  vector,
-				"payload": payload,
-			},
+		"batch": map[string]interface{}{
+			"ids":      []string{id},
+			"vectors":  [][]float64{vectorFloat64},
+			"payloads": []map[string]interface{}{cleanedPayload},
 		},
 	}
 
@@ -41,22 +68,27 @@ func (r *QdrantRepo) UpsertVector(collection string, id string, vector []float32
 		return "", fmt.Errorf("failed to marshal body: %w", err)
 	}
 
-	log.Printf("📤 Sending to Qdrant: URL=%s, ID=%s, VectorLen=%d", url, id, len(vector))
+	// ✅ PUT method kullan (POST yerine)
+	req, err := http.NewRequest(http.MethodPut, url, bytes.NewReader(b))
+	if err != nil {
+		return "", fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := r.client.Post(url, "application/json", bytes.NewReader(b))
+	resp, err := r.client.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("qdrant request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode >= 300 {
-		// Read error details
-		body, _ := io.ReadAll(resp.Body)
-		log.Printf("❌ Qdrant error response: Status=%d, Body=%s", resp.StatusCode, string(body))
-		return "", fmt.Errorf("qdrant responded %d: %s", resp.StatusCode, string(body))
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		log.Printf("❌ Qdrant Error: Status=%d, URL=%s", resp.StatusCode, url)
+		log.Printf("   Request body (first 500 chars): %s", truncate(string(b), 500))
+		log.Printf("   Response: %s", string(bodyBytes))
+		return "", fmt.Errorf("qdrant responded %d: %s", resp.StatusCode, string(bodyBytes))
 	}
 
-	log.Printf("✅ Successfully stored vector ID=%s", id)
 	return id, nil
 }
 
@@ -71,6 +103,7 @@ func (r *QdrantRepo) EnsureCollection(collection string, dim int) error {
 		log.Printf("✅ Collection '%s' already exists", collection)
 		return nil
 	}
+
 	if resp != nil {
 		resp.Body.Close()
 	}
@@ -84,8 +117,8 @@ func (r *QdrantRepo) EnsureCollection(collection string, dim int) error {
 			"distance": "Cosine",
 		},
 	}
-	b, _ := json.Marshal(body)
 
+	b, _ := json.Marshal(body)
 	req, err := http.NewRequest(http.MethodPut, url, bytes.NewReader(b))
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
@@ -111,13 +144,21 @@ func (r *QdrantRepo) EnsureCollection(collection string, dim int) error {
 // Search performs similarity search
 func (r *QdrantRepo) Search(collection string, vector []float32, limit int) ([]SearchResult, error) {
 	url := fmt.Sprintf("%s/collections/%s/points/search", r.baseURL, collection)
+
+	// ✅ vector'ü float64'e çevir
+	vectorFloat64 := make([]float64, len(vector))
+	for i, v := range vector {
+		vectorFloat64[i] = float64(v)
+	}
+
 	body := map[string]interface{}{
-		"vector":       vector,
+		"vector":       vectorFloat64,
 		"limit":        limit,
 		"with_payload": true,
+		"with_vector":  false,
 	}
-	b, _ := json.Marshal(body)
 
+	b, _ := json.Marshal(body)
 	resp, err := r.client.Post(url, "application/json", bytes.NewReader(b))
 	if err != nil {
 		return nil, fmt.Errorf("search request failed: %w", err)
@@ -126,16 +167,19 @@ func (r *QdrantRepo) Search(collection string, vector []float32, limit int) ([]S
 
 	if resp.StatusCode >= 300 {
 		bodyBytes, _ := io.ReadAll(resp.Body)
+		log.Printf("❌ Qdrant search error: Status=%d, Response=%s", resp.StatusCode, string(bodyBytes))
 		return nil, fmt.Errorf("qdrant search responded %d: %s", resp.StatusCode, string(bodyBytes))
 	}
 
 	var result struct {
 		Result []SearchResult `json:"result"`
 	}
+
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
 
+	log.Printf("✅ Qdrant returned %d results", len(result.Result))
 	return result.Result, nil
 }
 
@@ -143,4 +187,12 @@ type SearchResult struct {
 	ID      string                 `json:"id"`
 	Score   float64                `json:"score"`
 	Payload map[string]interface{} `json:"payload"`
+}
+
+// Helper function
+func truncate(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen] + "..."
 }

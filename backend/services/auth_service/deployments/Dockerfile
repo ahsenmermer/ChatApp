@@ -17,7 +17,8 @@ FROM alpine:3.18
 
 WORKDIR /app
 
-RUN apk add --no-cache tzdata ca-certificates
+# Optional: timezone
+RUN apk add --no-cache tzdata
 ENV TZ=UTC
 
 COPY --from=builder /app/auth_service .
@@ -30,3 +31,4 @@ ENV MIGRATIONS_PATH=/app/internal/migrations
 EXPOSE 8080
 
 ENTRYPOINT ["./auth_service"]
+CMD []

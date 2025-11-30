@@ -10,17 +10,14 @@ import (
 func SetupRouter(uploadHandler *handler.UploadHandler, producer *events.Producer) *gin.Engine {
 	r := gin.Default()
 
-	// CORS middleware
-	r.Use(func(c *gin.Context) {
-		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
-		c.Writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+	// ❌ CORS middleware'i SİLDİK - API Gateway halledecek
 
-		if c.Request.Method == "OPTIONS" {
-			c.AbortWithStatus(204)
-			return
-		}
-		c.Next()
+	// ✅ Health endpoint
+	r.GET("/health", func(c *gin.Context) {
+		c.JSON(200, gin.H{
+			"status":  "ok",
+			"service": "ocr",
+		})
 	})
 
 	// Upload endpoint
@@ -29,7 +26,7 @@ func SetupRouter(uploadHandler *handler.UploadHandler, producer *events.Producer
 	// File status endpoint
 	r.GET("/api/file/status/:file_id", handler.HandleFileStatus)
 
-	// Internal status update endpoint (for embedding service)
+	// Internal status update endpoint
 	r.POST("/internal/status", func(c *gin.Context) {
 		var req struct {
 			FileID      string `json:"file_id"`

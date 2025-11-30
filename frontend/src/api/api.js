@@ -1,4 +1,3 @@
-// src/api/api.js
 import axios from "axios";
 
 // 🌐 API Gateway adresini .env'den al
@@ -10,10 +9,10 @@ const api = axios.create({
   headers: {
     "Content-Type": "application/json",
   },
-  timeout: 10000, // 10 saniye zaman aşımı (istek takılmaz)
+  timeout: 30000, // ✅ 10000 → 30000 (30 saniye)
 });
 
-// 🔑 Token interceptor — kullanıcı giriş yaptıysa header’a ekle
+// 🔑 Token interceptor — kullanıcı giriş yaptıysa header'a ekle
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem("chatapp_token");
   if (token) {

@@ -9,6 +9,6 @@ COPY . .
 
 RUN go build -o chat_data_service ./cmd/main.go
 
-EXPOSE 8083
+EXPOSE 8082
 
 CMD ["./chat_data_service"]

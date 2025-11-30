@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/IBM/sarama"
+	"github.com/joho/godotenv"
 
 	"ocr_service/internal/config"
 	"ocr_service/internal/events"
@@ -34,6 +35,9 @@ func waitForKafka(brokers []string, retries int) error {
 }
 
 func main() {
+	// 🆕 .env yükle
+	_ = godotenv.Load("internal/config/.env")
+
 	cfg := config.LoadConfig()
 
 	// Wait for Kafka to be ready
@@ -78,7 +82,7 @@ func main() {
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt)
 	<-stop
-	log.Println("Shutting down OCR service...")
+	log.Println("🛑 Shutting down OCR service...")
 	cancel()
 	time.Sleep(time.Second)
 }

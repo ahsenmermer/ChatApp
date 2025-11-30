@@ -18,15 +18,16 @@ async function loadModel() {
     console.log("Model already loading...");
     return;
   }
-
   modelLoading = true;
-
   try {
     console.log("📦 Loading Xenova embedding model...");
     console.log("📦 Model: Xenova/all-MiniLM-L6-v2");
 
-    // "feature-extraction" kullan - bu kesin çalışır
-    embedModel = await pipeline("embeddings", "Xenova/all-MiniLM-L6-v2");
+    // DÜZELTİLDİ: "feature-extraction" kullan
+    embedModel = await pipeline(
+      "feature-extraction",
+      "Xenova/all-MiniLM-L6-v2"
+    );
 
     console.log("✅ Model loaded successfully!");
     modelLoading = false;
@@ -60,8 +61,7 @@ app.post("/embed", async (req, res) => {
       normalize: true,
     });
 
-    // Output her zaman tensor formatında gelir
-    // .data ile raw array'e çevir
+    // Output tensor formatında gelir - .data ile raw array'e çevir
     const vector = Array.from(output.data);
 
     console.log(`📊 Generated embedding with dimension: ${vector.length}`);
@@ -100,13 +100,14 @@ app.get("/test", async (req, res) => {
       pooling: "mean",
       normalize: true,
     });
+
     const vector = Array.from(output.data);
 
     res.json({
       test: "success",
       text: testText,
       dimension: vector.length,
-      sample: vector.slice(0, 5), // İlk 5 değeri göster
+      sample: vector.slice(0, 5),
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -117,7 +118,6 @@ app.get("/test", async (req, res) => {
 async function startServer() {
   try {
     await loadModel();
-
     app.listen(PORT, "0.0.0.0", () => {
       console.log(`🚀 Xenova embedding server running on port ${PORT}`);
       console.log(`📍 Health check: http://localhost:${PORT}/health`);

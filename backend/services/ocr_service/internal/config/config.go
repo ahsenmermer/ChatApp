@@ -1,6 +1,10 @@
 package config
 
-import "os"
+import (
+	"os"
+
+	"github.com/joho/godotenv"
+)
 
 type Config struct {
 	Port         string
@@ -9,6 +13,9 @@ type Config struct {
 }
 
 func LoadConfig() *Config {
+	// 🆕 .env dosyasını yükle
+	_ = godotenv.Load("internal/config/.env")
+
 	port := os.Getenv("OCR_SERVICE_PORT")
 	if port == "" {
 		port = "8090"

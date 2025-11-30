@@ -13,36 +13,70 @@ type XenovaClient struct {
 	client  *http.Client
 }
 
-func NewXenovaClient(url string) *XenovaClient {
+func NewXenovaClient(baseURL string) *XenovaClient {
 	return &XenovaClient{
-		baseURL: url,
-		client:  &http.Client{Timeout: 30 * time.Second},
+		baseURL: baseURL,
+		client: &http.Client{
+			Timeout: 30 * time.Second,
+		},
 	}
 }
 
-type embedReq struct {
+type EmbedRequest struct {
 	Text string `json:"text"`
 }
 
-type embedResp struct {
+type EmbedResponse struct {
 	Embedding []float32 `json:"embedding"`
 	Dimension int       `json:"dimension"`
 }
 
 func (x *XenovaClient) Embed(text string) ([]float32, error) {
-	reqBody := embedReq{Text: text}
-	b, _ := json.Marshal(reqBody)
-	resp, err := x.client.Post(fmt.Sprintf("%s/embed", x.baseURL), "application/json", bytes.NewReader(b))
+	if text == "" {
+		return nil, fmt.Errorf("text cannot be empty")
+	}
+
+	url := fmt.Sprintf("%s/embed", x.baseURL)
+
+	reqBody := EmbedRequest{Text: text}
+	b, err := json.Marshal(reqBody)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	resp, err := x.client.Post(url, "application/json", bytes.NewReader(b))
+	if err != nil {
+		return nil, fmt.Errorf("xenova request failed: %w", err)
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("xenova responded %d", resp.StatusCode)
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("xenova returned status %d", resp.StatusCode)
 	}
-	var r embedResp
-	if err := json.NewDecoder(resp.Body).Decode(&r); err != nil {
-		return nil, err
+
+	var embedResp EmbedResponse
+	if err := json.NewDecoder(resp.Body).Decode(&embedResp); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
-	return r.Embedding, nil
+
+	if len(embedResp.Embedding) == 0 {
+		return nil, fmt.Errorf("empty embedding returned")
+	}
+
+	return embedResp.Embedding, nil
+}
+
+// Health check
+func (x *XenovaClient) HealthCheck() error {
+	url := fmt.Sprintf("%s/health", x.baseURL)
+	resp, err := x.client.Get(url)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("health check failed with status %d", resp.StatusCode)
+	}
+	return nil
 }

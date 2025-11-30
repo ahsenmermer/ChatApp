@@ -5,7 +5,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	"chat_service/internal/config"
@@ -44,10 +46,21 @@ func (c *ChatService) HandleUserMessage(userID, message, conversationID, fileID 
 		conversationID = uuid.New().String()
 	}
 
+	// ✅ YENİ: Eğer dosya init mesajıysa, sadece FileTracker'a kaydet ve çık
+	if strings.HasPrefix(message, "_file_init_") {
+		if fileID != "" {
+			c.fileTracker.SetUserInfo(fileID, userID, conversationID)
+			log.Printf("📝 File info registered: file=%s, user=%s, conv=%s", fileID, userID, conversationID)
+		}
+		return "File registered", conversationID, nil
+	}
+
+	// 1. Auth doğrulama
 	if !c.authClient.IsUserValid(userID) {
 		return "", conversationID, fmt.Errorf("unauthorized user")
 	}
 
+	// 2. Plan aktif mi ve kota var mı?
 	if !c.subscriptionClient.IsSubscriptionActive(userID) {
 		return "", conversationID, fmt.Errorf("subscription inactive or expired")
 	}
@@ -60,7 +73,12 @@ func (c *ChatService) HandleUserMessage(userID, message, conversationID, fileID 
 		return "", conversationID, fmt.Errorf("quota exhausted")
 	}
 
-	// RAG: Eğer fileID varsa ve dosya hazırsa, ilgili chunk'ları getir
+	// ✅ Eğer fileID varsa, user bilgilerini FileTracker'a kaydet
+	if fileID != "" {
+		c.fileTracker.SetUserInfo(fileID, userID, conversationID)
+	}
+
+	// RAG - Eğer fileID varsa ve dosya hazırsa, ilgili chunk'ları getir
 	var ragContext string
 	if fileID != "" {
 		if !c.fileTracker.IsReady(fileID) {
@@ -77,10 +95,10 @@ func (c *ChatService) HandleUserMessage(userID, message, conversationID, fileID 
 		}
 	}
 
-	// Memory'den geçmiş konuşmaları al
+	// 3. Memory'den geçmiş konuşmaları al
 	memoryContext := c.memoryService.GetContext(userID)
 
-	// Full prompt oluştur
+	// Full prompt oluştur (RAG context varsa ekle)
 	var fullPrompt string
 	if ragContext != "" {
 		fullPrompt = fmt.Sprintf("%s\n\n%s\n\nKullanıcı Sorusu: %s", ragContext, memoryContext, message)
@@ -88,7 +106,7 @@ func (c *ChatService) HandleUserMessage(userID, message, conversationID, fileID 
 		fullPrompt = fmt.Sprintf("%s\nUser: %s", memoryContext, message)
 	}
 
-	// OpenRouter API çağrısı
+	// 4. OpenRouter API çağrısı
 	systemPrompt := "Sen kullanıcıyla doğal bir şekilde sohbet eden bir yapay zekâsın."
 	if ragContext != "" {
 		systemPrompt = "Sen kullanıcıya belge içeriğine dayalı cevaplar veren bir yapay zekâsın. Verilen belge bölümlerini analiz edip kullanıcının sorusuna doğru ve detaylı cevap ver."
@@ -99,11 +117,11 @@ func (c *ChatService) HandleUserMessage(userID, message, conversationID, fileID 
 		return "", conversationID, fmt.Errorf("AI response error: %v", err)
 	}
 
-	// Memory'e ekle
+	// 5. Memory'e yeni mesajları ekle
 	c.memoryService.AddMessage(userID, "User: "+message)
 	c.memoryService.AddMessage(userID, "AI: "+response)
 
-	// Subscription event gönder
+	// 6. Subscription Service'e kota azaltma bildirimi gönder
 	go func() {
 		event := map[string]string{
 			"user_id": userID,
@@ -114,10 +132,10 @@ func (c *ChatService) HandleUserMessage(userID, message, conversationID, fileID 
 			"application/json", bytes.NewBuffer(jsonData))
 	}()
 
-	// Kafka event
+	// 7. Kafka'ya event gönder
 	go func() {
 		if err := c.kafkaProducer.PublishChatCompleted(userID, message, response, conversationID); err != nil {
-			fmt.Printf("Kafka event publish failed: %v\n", err)
+			log.Printf("⚠️ Kafka event publish failed: %v", err)
 		}
 	}()
 
@@ -126,6 +144,10 @@ func (c *ChatService) HandleUserMessage(userID, message, conversationID, fileID 
 
 func (c *ChatService) GetFileTracker() *FileTracker {
 	return c.fileTracker
+}
+
+func (c *ChatService) GetKafkaProducer() *repository.KafkaProducer {
+	return c.kafkaProducer
 }
 
 func callOpenRouterAPI(prompt, systemPrompt, apiKey string) (string, error) {
@@ -137,19 +159,29 @@ func callOpenRouterAPI(prompt, systemPrompt, apiKey string) (string, error) {
 			{"role": "system", "content": systemPrompt},
 			{"role": "user", "content": prompt},
 		},
+		"temperature": 0.7,
+		"max_tokens":  2000,
 	}
 
 	body, _ := json.Marshal(reqBody)
 	req, _ := http.NewRequest("POST", url, bytes.NewBuffer(body))
 	req.Header.Set("Authorization", "Bearer "+apiKey)
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("HTTP-Referer", "https://yourapp.com")
+	req.Header.Set("X-Title", "ChatApp")
 
 	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("request failed: %w", err)
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode >= 300 {
+		var errResp map[string]interface{}
+		json.NewDecoder(resp.Body).Decode(&errResp)
+		return "", fmt.Errorf("API returned status %d: %v", resp.StatusCode, errResp)
+	}
 
 	var result struct {
 		Choices []struct {
@@ -157,10 +189,18 @@ func callOpenRouterAPI(prompt, systemPrompt, apiKey string) (string, error) {
 				Content string `json:"content"`
 			} `json:"message"`
 		} `json:"choices"`
+		Error *struct {
+			Message string `json:"message"`
+			Code    string `json:"code"`
+		} `json:"error"`
 	}
 
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return "", err
+		return "", fmt.Errorf("decode failed: %w", err)
+	}
+
+	if result.Error != nil {
+		return "", fmt.Errorf("API error: %s (code: %s)", result.Error.Message, result.Error.Code)
 	}
 
 	if len(result.Choices) == 0 {

@@ -9,17 +9,17 @@ import { useAuth } from "../contexts/AuthContext.jsx";
 export default function ChatApp() {
   const { user } = useAuth();
   const [conversations, setConversations] = useState([]);
-  const [activeConversationId, setActiveConversationId] = useState(null);
+  const [activeConversation, setActiveConversation] = useState(null);
 
   // Yeni sohbet oluştur
   const handleNewConversation = (title) => {
     const newId = uuidv4();
     const newConv = { id: newId, title, messages: [] };
     setConversations((prev) => [...prev, newConv]);
-    setActiveConversationId(newId);
+    setActiveConversation(newConv);
   };
 
-  // Backend’den geçmişi çek
+  // Backend'den geçmişi çek
   useEffect(() => {
     if (!user?.id) return;
 
@@ -31,9 +31,14 @@ export default function ChatApp() {
         if (messages.length === 0) {
           const newConv = { id: "default", title: "Sohbet 1", messages: [] };
           setConversations([newConv]);
-          setActiveConversationId("default");
+          setActiveConversation(newConv);
           return;
         }
+
+        // ✅ Mesajları timestamp'e göre sırala (en eski → en yeni)
+        messages.sort((a, b) => {
+          return new Date(a.timestamp) - new Date(b.timestamp);
+        });
 
         const convMap = {};
         messages.forEach((m) => {
@@ -57,13 +62,6 @@ export default function ChatApp() {
           }
         });
 
-        // ✅ Her conversation içindeki mesajları timestamp'e göre sırala
-        Object.values(convMap).forEach((conv) => {
-          conv.messages.sort(
-            (a, b) => new Date(a.timestamp) - new Date(b.timestamp)
-          );
-        });
-
         let convArr = Object.values(convMap).sort((a, b) => {
           const tA = new Date(a.messages[0]?.timestamp || 0);
           const tB = new Date(b.messages[0]?.timestamp || 0);
@@ -76,7 +74,7 @@ export default function ChatApp() {
         }));
 
         setConversations(convArr);
-        if (!activeConversationId) setActiveConversationId(convArr[0].id);
+        if (!activeConversation) setActiveConversation(convArr[0]);
       } catch (err) {
         console.error("❌ Sohbet geçmişi alınamadı:", err);
       }
@@ -91,30 +89,29 @@ export default function ChatApp() {
       const newConversations = prev.map((c) =>
         c.id === convId ? { ...c, messages: updateFn(c.messages) } : c
       );
+
+      if (activeConversation?.id === convId) {
+        setActiveConversation(newConversations.find((c) => c.id === convId));
+      }
+
       return newConversations;
     });
   };
-
-  const activeConversation =
-    conversations.find((c) => c.id === activeConversationId) || null;
 
   return (
     <div className="chat-app">
       <Sidebar
         conversations={conversations}
         activeConversation={activeConversation}
-        onSelectConversation={(conv) => setActiveConversationId(conv.id)}
+        onSelectConversation={setActiveConversation}
         onNewConversation={handleNewConversation}
       />
 
-      {activeConversation && (
-        <ChatWindow
-          key={activeConversation.id} // Bu önemli: React component yeniden mount edecek
-          conversation={activeConversation}
-          onUpdateConversation={handleUpdateConversation}
-          user={user}
-        />
-      )}
+      <ChatWindow
+        conversation={activeConversation}
+        onUpdateConversation={handleUpdateConversation}
+        user={user}
+      />
     </div>
   );
 }

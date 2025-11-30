@@ -70,7 +70,7 @@ services:
       start_period: 10s
 
     # ======================
-  # Qdrant (Vector DB) - YENİ!
+  # Qdrant (Vector DB) - ✅ YENİ
   # ======================
   qdrant:
     image: qdrant/qdrant:v1.7.4
@@ -133,8 +133,8 @@ services:
       retries: 5
       start_period: 20s
 
-    # ======================
-  # Xenova Embedding Server - YENİ!
+   # ======================
+  # Xenova Embedding Server - ✅ YENİ
   # ======================
   xenova:
     build:
@@ -143,14 +143,16 @@ services:
     container_name: xenova
     ports:
       - "3000:3000"
+    environment:
+      PORT: "3000"
     networks:
       - backend_network
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:3000/health || exit 1"]
       interval: 15s
       timeout: 5s
-      retries: 3
-      start_period: 30s
+      retries: 5
+      start_period: 60s
 
 
   # ======================
@@ -252,7 +254,7 @@ services:
       retries: 3
       start_period: 15s
 
- # ======================
+    # ======================
   # OCR Service
   # ======================
   ocr_service:
@@ -277,7 +279,7 @@ services:
       retries: 3
       start_period: 15s
 
-# ======================
+  # ======================
   # Embedding Service
   # ======================
   embedding_service:
@@ -289,12 +291,14 @@ services:
       - kafka
       - qdrant
       - xenova
+      - ocr_service
     environment:
       EMBEDDING_SERVICE_PORT: "8400"
       KAFKA_BROKERS: kafka:9092
       KAFKA_GROUP: embedding-service-group
       QDRANT_URL: http://qdrant:6333
       XENOVA_URL: http://xenova:3000
+      OCR_SERVICE_URL: http://ocr_service:8090
     ports:
       - "8400:8400"
     networks:
@@ -342,7 +346,8 @@ volumes:
   auth_db_data:
   subscription_db_data:
   clickhouse_data:
-  qdrant_data:
+  qdrant_data: 
+  ocr_uploads:
 
 # ======================
 # Network

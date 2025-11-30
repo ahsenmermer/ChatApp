@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
+	"log"
 	"net/http"
 	"time"
 )
@@ -16,7 +18,9 @@ type QdrantClient struct {
 func NewQdrantClient(baseURL string) *QdrantClient {
 	return &QdrantClient{
 		baseURL: baseURL,
-		client:  &http.Client{Timeout: 10 * time.Second},
+		client: &http.Client{
+			Timeout: 30 * time.Second,
+		},
 	}
 }
 
@@ -33,6 +37,7 @@ func (q *QdrantClient) Search(collection string, vector []float32, limit int, fi
 		"vector":       vector,
 		"limit":        limit,
 		"with_payload": true,
+		"with_vector":  false,
 	}
 
 	if filter != nil {
@@ -47,15 +52,33 @@ func (q *QdrantClient) Search(collection string, vector []float32, limit int, fi
 	defer resp.Body.Close()
 
 	if resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("qdrant search responded %d", resp.StatusCode)
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		log.Printf("❌ Qdrant error: Status=%d, Response=%s", resp.StatusCode, string(bodyBytes))
+		return nil, fmt.Errorf("qdrant search responded %d: %s", resp.StatusCode, string(bodyBytes))
 	}
 
 	var result struct {
 		Result []SearchResult `json:"result"`
 	}
+
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
 
+	log.Printf("✅ Qdrant returned %d results", len(result.Result))
 	return result.Result, nil
+}
+
+func (q *QdrantClient) HealthCheck() error {
+	url := fmt.Sprintf("%s/health", q.baseURL)
+	resp, err := q.client.Get(url)
+	if err != nil {
+		return fmt.Errorf("health check failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("health check returned status %d", resp.StatusCode)
+	}
+	return nil
 }

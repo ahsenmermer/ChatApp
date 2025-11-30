@@ -1,6 +1,7 @@
 package router
 
 import (
+	"log"
 	"net/http"
 
 	"api_gateway/internal/config"
@@ -11,30 +12,37 @@ import (
 func SetupRoutes(cfg config.Config) http.Handler {
 	mux := http.NewServeMux()
 
-	// Auth Service Routes
-	mux.Handle("/api/auth/", handler.NewAuthHandler(cfg.AuthServiceURL))
-
-	// Subscription Service Routes
-	mux.Handle("/api/subscription/", handler.NewSubscriptionHandler(cfg.SubscriptionServiceURL))
-
-	// Chat Service Routes
-	mux.Handle("/api/chat", handler.NewChatHandler(cfg.ChatServiceURL))
-	mux.Handle("/api/file/status/", handler.NewChatHandler(cfg.ChatServiceURL))
-
-	// Chat Data Service Routes
-	mux.Handle("/api/chat/history/", handler.NewChatDataHandler(cfg.ChatDataServiceURL))
-
-	// OCR Service Routes (dosya yükleme)
-	mux.HandleFunc("/api/upload", func(w http.ResponseWriter, r *http.Request) {
-		// OCR servisine yönlendir
-		proxy := handler.NewOCRHandler(cfg.OCRServiceURL)
-		proxy.ServeHTTP(w, r)
+	// Health Check
+	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"status":"ok","service":"api_gateway"}`))
 	})
 
-	// Fallback
+	// Create proxy handlers for each service
+	authProxy := handler.NewProxyHandler(cfg.AuthServiceURL, "Auth")
+	subscriptionProxy := handler.NewProxyHandler(cfg.SubscriptionServiceURL, "Subscription")
+	chatProxy := handler.NewProxyHandler(cfg.ChatServiceURL, "Chat")
+	chatDataProxy := handler.NewProxyHandler(cfg.ChatDataServiceURL, "ChatData")
+	ocrProxy := handler.NewProxyHandler(cfg.OCRServiceURL, "OCR")
+	embeddingProxy := handler.NewProxyHandler(cfg.EmbeddingServiceURL, "Embedding")
+
+	// Register routes
+	RegisterAuthRoutes(mux, authProxy)
+	RegisterSubscriptionRoutes(mux, subscriptionProxy)
+	RegisterChatRoutes(mux, chatProxy)
+	RegisterChatDataRoutes(mux, chatDataProxy)
+	RegisterOCRRoutes(mux, ocrProxy)
+	RegisterEmbeddingRoutes(mux, embeddingProxy)
+
+	// Fallback - 404
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		http.NotFound(w, r)
+		log.Printf("⚠️ Unknown endpoint: %s %s", r.Method, r.URL.Path)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		w.Write([]byte(`{"error":"endpoint not found"}`))
 	})
 
+	// Apply CORS Middleware
 	return middleware.Cors(mux)
 }

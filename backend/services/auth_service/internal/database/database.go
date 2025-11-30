@@ -3,8 +3,6 @@ package database
 import (
 	"fmt"
 	"log"
-	"os"
-	"path/filepath"
 	"time"
 
 	"github.com/jmoiron/sqlx"
@@ -15,6 +13,7 @@ import (
 
 var DB *sqlx.DB
 
+// Connect establishes database connection
 func Connect(cfg *config.Config) error {
 	dsn := fmt.Sprintf(
 		"host=%s port=%d user=%s password=%s dbname=%s sslmode=disable",
@@ -43,6 +42,7 @@ func Connect(cfg *config.Config) error {
 	return nil
 }
 
+// Close closes the database connection
 func Close() {
 	if DB != nil {
 		if err := DB.Close(); err != nil {
@@ -51,28 +51,4 @@ func Close() {
 			log.Println("🧹 Database connection closed")
 		}
 	}
-}
-
-// RunMigrations executes all SQL files
-func RunMigrations(path string) error {
-	files, err := filepath.Glob(fmt.Sprintf("%s/*.sql", path))
-	if err != nil {
-		return fmt.Errorf("list migrations: %w", err)
-	}
-
-	for _, file := range files {
-		sqlBytes, err := os.ReadFile(file)
-		if err != nil {
-			return fmt.Errorf("read file %s: %w", file, err)
-		}
-
-		if _, err := DB.Exec(string(sqlBytes)); err != nil {
-			return fmt.Errorf("exec migration %s: %w", file, err)
-		}
-
-		log.Printf("🚀 Migration applied: %s", file)
-	}
-
-	log.Println("✅ All migrations applied successfully")
-	return nil
 }

@@ -37,23 +37,6 @@ func NewEmbeddingService(consumer *events.Consumer, producer *events.Producer, q
 	}
 }
 
-// cleanPayload nil değerleri ve uyumsuz tipleri temizler
-func cleanPayload(p map[string]interface{}) map[string]interface{} {
-	clean := make(map[string]interface{})
-	for k, v := range p {
-		switch v := v.(type) {
-		case nil:
-			continue
-		case string, int, float64, bool, map[string]interface{}:
-			clean[k] = v
-		default:
-			// bilinmeyen tipleri string olarak kaydet
-			clean[k] = fmt.Sprintf("%v", v)
-		}
-	}
-	return clean
-}
-
 func (s *EmbeddingService) updateFileStatus(fileID, status string, totalChunks int, message string) {
 	url := fmt.Sprintf("%s/internal/status", s.ocrBaseURL)
 	payload := map[string]interface{}{
@@ -70,79 +53,156 @@ func (s *EmbeddingService) updateFileStatus(fileID, status string, totalChunks i
 	client := &http.Client{Timeout: 5 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
-		log.Printf("Failed to update status: %v", err)
+		log.Printf("⚠️ Failed to update status: %v", err)
 		return
 	}
 	defer resp.Body.Close()
 }
 
 func (s *EmbeddingService) Run(ctx context.Context) {
-	log.Println("Embedding service: start consumer loop")
+	log.Println("🚀 Embedding service: start consumer loop")
 
 	for {
 		select {
 		case <-ctx.Done():
-			log.Println("Embedding service: context done")
+			log.Println("🛑 Embedding service: context done")
 			return
 		default:
 			msg, err := s.consumer.ReadMessage(ctx)
 			if err != nil {
-				log.Printf("consumer read error: %v", err)
+				log.Printf("❌ consumer read error: %v", err)
 				time.Sleep(time.Second)
 				continue
 			}
 
 			var evt models.OCRProcessedEvent
 			if err := json.Unmarshal(msg.Value, &evt); err != nil {
-				log.Printf("invalid ocr_processed event: %v", err)
+				log.Printf("❌ invalid ocr_processed event: %v", err)
 				continue
 			}
 
-			log.Printf("Processing OCR_PROCESSED for file %s (%s) with %d chunks", evt.FileID, evt.FileName, len(evt.Chunks))
+			log.Printf("📥 Processing OCR_PROCESSED for file %s (%s) with %d chunks", evt.FileID, evt.FileName, len(evt.Chunks))
 
 			if len(evt.Chunks) == 0 {
+				log.Printf("⚠️ No chunks to embed for file %s", evt.FileID)
 				s.updateFileStatus(evt.FileID, "completed", 0, "No chunks to embed")
 				continue
 			}
 
-			// Embed first chunk to determine dimension
-			firstVec, err := s.xenova.Embed(evt.Chunks[0].Text)
+			// İlk chunk'ı embed et ve dimension al
+			var firstVec []float32
+			maxRetries := 3
+			for i := 0; i < maxRetries; i++ {
+				firstVec, err = s.xenova.Embed(evt.Chunks[0].Text)
+				if err == nil {
+					break
+				}
+				log.Printf("⚠️ Xenova embed retry %d/%d failed: %v", i+1, maxRetries, err)
+				time.Sleep(time.Second * time.Duration(i+1))
+			}
+
 			if err != nil {
-				log.Printf("xenova embed failed for first chunk: %v", err)
+				log.Printf("❌ xenova embed failed after retries: %v", err)
 				s.updateFileStatus(evt.FileID, "failed", 0, fmt.Sprintf("Embedding failed: %v", err))
 				s.publishError(evt.FileID, err)
 				continue
 			}
 
 			dimension := len(firstVec)
+			log.Printf("📊 Embedding dimension: %d", dimension)
+
+			// Collection'ı oluştur/kontrol et
 			if err := s.qrepo.EnsureCollection("documents", dimension); err != nil {
-				log.Printf("failed to ensure collection: %v", err)
+				log.Printf("❌ failed to ensure collection: %v", err)
 				s.updateFileStatus(evt.FileID, "failed", 0, fmt.Sprintf("Collection setup failed: %v", err))
 				s.publishError(evt.FileID, err)
 				continue
 			}
 
 			var stored []models.StoredChunkInfo
+			successCount := 0
 
+			// Tüm chunk'ları işle
 			for i, ch := range evt.Chunks {
-				vec, err := s.xenova.Embed(ch.Text)
+				// Embedding oluştur (retry ile)
+				var vec []float32
+				for retry := 0; retry < maxRetries; retry++ {
+					vec, err = s.xenova.Embed(ch.Text)
+					if err == nil {
+						break
+					}
+					log.Printf("⚠️ Embed retry %d/%d for chunk %d: %v", retry+1, maxRetries, i, err)
+					time.Sleep(time.Millisecond * 500)
+				}
+
 				if err != nil {
-					log.Printf("xenova embed failed for chunk %s: %v", ch.ChunkID, err)
+					log.Printf("❌ xenova embed failed for chunk %s after retries: %v", ch.ChunkID, err)
 					continue
 				}
 
-				payload := cleanPayload(map[string]interface{}{
+				// 🔥 KRİTİK: Payload'u sadece Qdrant uyumlu tiplerle oluştur
+				payload := map[string]interface{}{
 					"file_id":      evt.FileID,
 					"file_name":    evt.FileName,
 					"content_type": evt.ContentType,
 					"chunk_id":     ch.ChunkID,
-					"page":         ch.Page,
 					"text":         ch.Text,
-					"metadata":     ch.Metadata,
-				})
+				}
 
+				// Sadece 0'dan büyük değerleri ekle
+				if ch.Page > 0 {
+					payload["page"] = float64(ch.Page) // 🔥 int -> float64
+				}
+				if ch.StartOffset > 0 {
+					payload["start_offset"] = float64(ch.StartOffset) // 🔥 int -> float64
+				}
+				if ch.EndOffset > 0 {
+					payload["end_offset"] = float64(ch.EndOffset) // 🔥 int -> float64
+				}
+
+				// 🔥 Metadata'yı flatten et - Sadece primitive tipler
+				if ch.Metadata != nil {
+					for k, v := range ch.Metadata {
+						if v == nil {
+							continue // nil değerleri atla
+						}
+
+						switch val := v.(type) {
+						case string:
+							if val != "" {
+								payload["meta_"+k] = val
+							}
+						case int:
+							payload["meta_"+k] = float64(val)
+						case int64:
+							payload["meta_"+k] = float64(val)
+						case int32:
+							payload["meta_"+k] = float64(val)
+						case float64:
+							payload["meta_"+k] = val
+						case float32:
+							payload["meta_"+k] = float64(val)
+						case bool:
+							payload["meta_"+k] = val
+						default:
+							// Bilinmeyen tipleri string'e çevir
+							strVal := fmt.Sprintf("%v", val)
+							if strVal != "" && strVal != "<nil>" {
+								payload["meta_"+k] = strVal
+							}
+						}
+					}
+				}
+
+				// 🔥 DEBUG: İlk chunk'ın payload'unu logla
+				if i == 0 {
+					payloadJSON, _ := json.MarshalIndent(payload, "", "  ")
+					log.Printf("📦 First chunk payload:\n%s", string(payloadJSON))
+				}
+
+				// Qdrant'a kaydet
 				if _, err := s.qrepo.UpsertVector("documents", ch.ChunkID, vec, payload); err != nil {
-					log.Printf("qdrant upsert failed for chunk %s: %v", ch.ChunkID, err)
+					log.Printf("❌ qdrant upsert failed for chunk %s: %v", ch.ChunkID, err)
 					continue
 				}
 
@@ -152,13 +212,22 @@ func (s *EmbeddingService) Run(ctx context.Context) {
 					Page:     ch.Page,
 				})
 
+				successCount++
+
 				if i == 0 {
-					log.Printf("First chunk embedded successfully")
+					log.Printf("✅ First chunk embedded successfully")
+				}
+
+				// Progress log
+				if (i+1)%5 == 0 || i == len(evt.Chunks)-1 {
+					log.Printf("📈 Progress: %d/%d chunks embedded", i+1, len(evt.Chunks))
 				}
 			}
 
-			s.updateFileStatus(evt.FileID, "completed", len(stored), fmt.Sprintf("Successfully embedded %d chunks", len(stored)))
+			log.Printf("✅ Total embedded: %d/%d chunks for file %s", successCount, len(evt.Chunks), evt.FileID)
+			s.updateFileStatus(evt.FileID, "completed", len(stored), fmt.Sprintf("Successfully embedded %d/%d chunks", successCount, len(evt.Chunks)))
 
+			// EMBEDDING_STORED event yayınla
 			out := models.EmbeddingStoredEvent{
 				Event:       "EMBEDDING_STORED",
 				FileID:      evt.FileID,
@@ -168,9 +237,12 @@ func (s *EmbeddingService) Run(ctx context.Context) {
 				TotalChunks: len(stored),
 				Timestamp:   time.Now().UTC().Format(time.RFC3339),
 			}
+
 			b, _ := json.Marshal(out)
 			if err := s.producer.Publish("embedding_stored", b); err != nil {
-				log.Printf("failed to publish embedding_stored: %v", err)
+				log.Printf("❌ failed to publish embedding_stored: %v", err)
+			} else {
+				log.Printf("✅ Published EMBEDDING_STORED event for file %s", evt.FileID)
 			}
 		}
 	}
@@ -185,14 +257,4 @@ func (s *EmbeddingService) publishError(fileID string, err error) {
 	}
 	b, _ := json.Marshal(errorEvt)
 	s.producer.Publish("embedding_failed", b)
-}
-
-func (s *EmbeddingService) RunHTTP(addr string) error {
-	mux := http.NewServeMux()
-	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"status":"ok"}`))
-	})
-	log.Printf("Embedding service HTTP listening on %s", addr)
-	return http.ListenAndServe(addr, mux)
 }

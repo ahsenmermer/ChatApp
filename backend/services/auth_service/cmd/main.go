@@ -9,6 +9,7 @@ import (
 	"auth_service/internal/config"
 	"auth_service/internal/database"
 	"auth_service/internal/handler"
+	"auth_service/internal/migrations"
 	"auth_service/internal/repository"
 	"auth_service/internal/router"
 	"auth_service/internal/services"
@@ -33,8 +34,8 @@ func main() {
 	}
 	defer database.Close()
 
-	// Migration
-	if err := database.RunMigrations(cfg.MigrationsPath); err != nil {
+	// Migration (migrations.Run fonksiyonu artık path parametresi alıyor)
+	if err := migrations.Run(cfg.MigrationsPath); err != nil {
 		log.Fatalf("failed to run migrations: %v", err)
 	}
 

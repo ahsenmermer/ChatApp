@@ -1,31 +1,22 @@
 import React, { useState, useRef } from "react";
 import "../styles/MessageInput.css";
 
-export default function MessageInput({ onSend, onFileUpload }) {
+export default function MessageInput({
+  onSend,
+  onFileUpload,
+  currentFileId,
+  uploadedFile,
+  onRemoveFile,
+}) {
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
-  const [selectedFile, setSelectedFile] = useState(null);
+  const [uploadingFile, setUploadingFile] = useState(null);
   const fileInputRef = useRef(null);
 
   const submit = async (e) => {
     e.preventDefault();
-
-    // Eğer dosya varsa, önce dosyayı yükle
-    if (selectedFile) {
-      setSending(true);
-      try {
-        await onFileUpload(selectedFile, text.trim());
-        setText("");
-        setSelectedFile(null);
-      } finally {
-        setSending(false);
-      }
-      return;
-    }
-
-    // Sadece metin varsa
-    if (!text.trim()) return;
+    if (!text.trim() || sending) return;
     setSending(true);
 
     try {
@@ -36,114 +27,168 @@ export default function MessageInput({ onSend, onFileUpload }) {
     }
   };
 
-  const handleFileSelect = (e, type) => {
+  const handleFileSelect = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
 
-    setSelectedFile(file);
     setShowMenu(false);
-  };
+    setUploadingFile(file.name);
 
-  const removeFile = () => {
-    setSelectedFile(null);
+    try {
+      await onFileUpload(file);
+    } finally {
+      setUploadingFile(null);
+    }
+
+    // Input'u temizle
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
   };
 
   return (
-    <div className="input-wrapper">
-      {/* Dosya Önizleme */}
-      {selectedFile && (
-        <div className="file-preview">
+    <div className="message-input-wrapper">
+      {/* 📎 Dosya Önizleme Badge */}
+      {uploadedFile && (
+        <div className="file-preview-badge">
           <div className="file-info">
             <span className="file-icon">
-              {selectedFile.type.includes("pdf") ? "📄" : "🖼️"}
+              {/* ✅ PDF veya fotoğraf ikonu */}
+              {uploadedFile.name.toLowerCase().endsWith(".pdf") ? "📄" : "🖼️"}
             </span>
-            <span className="file-name">{selectedFile.name}</span>
-            <span className="file-size">
-              {(selectedFile.size / 1024).toFixed(1)} KB
-            </span>
+            <div className="file-details">
+              <span className="file-name">{uploadedFile.name}</span>
+              <span className="file-status">
+                {uploadedFile.status === "processing" && "⏳ İşleniyor..."}
+                {uploadedFile.status === "ready" &&
+                  `✅ ${uploadedFile.chunks} bölüm - Soru sorabilirsiniz!`}
+                {uploadedFile.status === "failed" && "❌ İşlenemedi"}
+              </span>
+            </div>
           </div>
           <button
             type="button"
             className="remove-file-btn"
-            onClick={removeFile}
+            onClick={onRemoveFile}
+            title="Dosyayı kaldır"
           >
             ✕
           </button>
         </div>
       )}
 
-      {/* Input Alanı */}
-      <form onSubmit={submit} className="message-input-form">
-        <div className="input-container">
-          {/* + Butonu ve Menü */}
-          <div className="attachment-section">
-            <button
-              type="button"
-              className="attach-btn"
-              onClick={() => setShowMenu(!showMenu)}
-              title="Dosya ekle"
-            >
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-                <path
-                  d="M12 5v14M5 12h14"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
+      <div className="input-container">
+        {/* Attachment Button */}
+        <div className="attachment-wrapper">
+          <button
+            type="button"
+            className="attachment-btn"
+            onClick={() => setShowMenu(!showMenu)}
+            disabled={uploadingFile || uploadedFile}
+          >
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+              <path
+                d="M12 5v14M5 12h14"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+              />
+            </svg>
+          </button>
+
+          {showMenu && (
+            <div className="upload-dropdown">
+              <label className="upload-option">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                  <path
+                    d="M7 18h10M9.5 12.5l2.5-2.5 2.5 2.5M12 10v7"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                  />
+                  <rect
+                    x="4"
+                    y="4"
+                    width="16"
+                    height="16"
+                    rx="2"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                  />
+                </svg>
+                <span>PDF Yükle</span>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="application/pdf"
+                  onChange={handleFileSelect}
+                  hidden
                 />
-              </svg>
-            </button>
+              </label>
 
-            {showMenu && (
-              <div className="upload-dropdown">
-                <label className="upload-option">
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept="application/pdf"
-                    onChange={(e) => handleFileSelect(e, "pdf")}
-                    hidden
+              <label className="upload-option">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                  <rect
+                    x="3"
+                    y="3"
+                    width="18"
+                    height="18"
+                    rx="2"
+                    stroke="currentColor"
+                    strokeWidth="2"
                   />
-                  <span className="option-icon">📄</span>
-                  <span className="option-text">PDF Yükle</span>
-                </label>
-
-                <label className="upload-option">
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={(e) => handleFileSelect(e, "image")}
-                    hidden
+                  <circle cx="8.5" cy="8.5" r="1.5" fill="currentColor" />
+                  <path
+                    d="M21 15l-5-5L5 21"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
                   />
-                  <span className="option-icon">🖼️</span>
-                  <span className="option-text">Fotoğraf Yükle</span>
-                </label>
-              </div>
-            )}
-          </div>
+                </svg>
+                <span>Fotoğraf Yükle</span>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleFileSelect}
+                  hidden
+                />
+              </label>
+            </div>
+          )}
+        </div>
 
-          {/* Text Input */}
+        {/* Message Form */}
+        <form onSubmit={submit} className="message-form">
           <input
             type="text"
-            className="text-input"
             placeholder={
-              selectedFile ? "Mesaj ekle (opsiyonel)..." : "Mesaj yazın..."
+              uploadingFile
+                ? `📤 ${uploadingFile} yükleniyor...`
+                : uploadedFile?.status === "ready"
+                ? `"${uploadedFile.name}" hakkında soru sorun...`
+                : uploadedFile?.status === "processing"
+                ? "Dosya işleniyor, lütfen bekleyin..."
+                : "Mesaj yazın..."
             }
             value={text}
             onChange={(e) => setText(e.target.value)}
-            disabled={sending}
+            disabled={
+              sending || uploadingFile || uploadedFile?.status === "processing"
+            }
+            className="message-input"
           />
-
-          {/* Gönder Butonu */}
           <button
             type="submit"
+            disabled={
+              !text.trim() ||
+              sending ||
+              uploadingFile ||
+              uploadedFile?.status === "processing"
+            }
             className="send-btn"
-            disabled={sending || (!text.trim() && !selectedFile)}
           >
             {sending ? (
-              <div className="spinner" />
+              <span className="loading-spinner">⏳</span>
             ) : (
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
                 <path
@@ -156,8 +201,8 @@ export default function MessageInput({ onSend, onFileUpload }) {
               </svg>
             )}
           </button>
-        </div>
-      </form>
+        </form>
+      </div>
     </div>
   );
 }

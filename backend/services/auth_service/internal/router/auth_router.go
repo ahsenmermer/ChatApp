@@ -17,7 +17,6 @@ func SetupAuthRoutes(mux *http.ServeMux, authHandler *handler.AuthHandler) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	})
 
-	// User login
 	mux.HandleFunc("/api/auth/login", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost {
 			authHandler.Login(w, r)
